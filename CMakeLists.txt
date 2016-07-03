@@ -45,7 +45,7 @@ add_library(libass
 
 if(iconv_VERSION)
   target_link_libraries(libass iconv::iconv)
-  # target_include_directories(libass IMPORTED iconv::iconv)
+  # target_include_directories(libass IMPORTED libass::libass)
   target_compile_definitions(libass PRIVATE CONFIG_ICONV)
 endif()
 
@@ -61,7 +61,10 @@ if(NOT BUILD_SHARED_LIBS)
   target_compile_definitions(libass PRIVATE ASS_STATIC)
 endif()
 
-
+target_include_directories(libass
+  INTERFACE
+  $<INSTALL_INTERFACE:include/ass>
+)
 
 if(MSVC)
   target_sources(libass PRIVATE
@@ -69,4 +72,58 @@ if(MSVC)
     libass/ass_directwrite.c
   )
 set(CMAKE_DEBUG_POSTFIX "d")
+endif()
+
+set(libass_VERSION 0.13.2)
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+  ${CMAKE_CURRENT_BINARY_DIR}/libass-config-version.cmake
+  VERSION ${libass_VERSION}
+  COMPATIBILITY AnyNewerVersion
+)
+
+install(TARGETS libass EXPORT libass
+  RUNTIME DESTINATION bin
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib)
+
+
+install(FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_render.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_shaper.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_utils.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_bitmap.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_cache.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_cache_template.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_drawing.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_font.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_fontconfig.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_library.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_parse.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/libass/ass_rasterizer.h
+  DESTINATION include/ass)
+
+install(EXPORT libass
+  FILE
+    libass.cmake
+  NAMESPACE
+    libass::
+  DESTINATION
+    lib/cmake/libass
+)
+install(
+  FILES
+    cmake/libass-config.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/libass-config-version.cmake
+  DESTINATION
+    lib/cmake/libass
+)
+
+if(MSVC)
+  install(FILES
+    $<TARGET_PDB_FILE:libass>
+    DESTINATION lib
+  )
 endif()
