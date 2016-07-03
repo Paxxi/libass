@@ -44,16 +44,22 @@ add_library(libass
   )
 
 if(iconv_VERSION)
-  target_link_libraries(libass IMPORTED iconv::iconv)
+  target_link_libraries(libass iconv::iconv)
   # target_include_directories(libass IMPORTED iconv::iconv)
   target_compile_definitions(libass PRIVATE CONFIG_ICONV)
 endif()
 
-target_link_libraries(libass IMPORTED
+target_link_libraries(libass
   freetype::freetype
   fribidi::fribidi
 )
-target_compile_definitions(libass PRIVATE CONFIG_RASTERIZER)
+target_compile_definitions(libass PRIVATE
+  CONFIG_RASTERIZER
+  BUILDING_LIBASS)
+
+if(NOT BUILD_SHARED_LIBS)
+  target_compile_definitions(libass PRIVATE ASS_STATIC)
+endif()
 
 
 
