@@ -268,7 +268,7 @@ static void load_fonts_from_dir(ASS_Library *library, const char *dir)
   {
     if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
     {
-      wchar_t *buf[4000];
+      wchar_t buf[4000];
       wcscpy_s(buf, 4000, dirPath);
       wcscat_s(buf, 4000, L"\\");
       wcscat_s(buf, 4000, ffd.cFileName);
