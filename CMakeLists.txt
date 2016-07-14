@@ -121,7 +121,7 @@ install(
     lib/cmake/libass
 )
 
-if(MSVC)
+if(MSVC AND BUILD_SHARED_LIBS)
   install(FILES
     $<TARGET_PDB_FILE:libass>
     DESTINATION lib
