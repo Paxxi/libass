@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.2)
 
-project(libass LANGUAGES C)
+project(libass LANGUAGES C CXX)
 
 find_package(iconv)
 find_package(freetype 2.6 REQUIRED NO_MODULE)
@@ -69,7 +69,7 @@ target_include_directories(libass
 if(MSVC)
   target_sources(libass PRIVATE
     libass/ass_directwrite.h
-    libass/ass_directwrite.c
+    libass/ass_directwrite.cpp
   )
 set(CMAKE_DEBUG_POSTFIX "d")
 endif()
