@@ -29,6 +29,8 @@
 #include "ass_directwrite.h"
 #include "ass_utils.h"
 #include "ass_fontselect.h"
+#include "ass_library.h"
+#include <minwinbase.h>
 
 #define NAME_MAX_LENGTH 256
 #define FALLBACK_DEFAULT_FONT L"Arial"
@@ -48,16 +50,187 @@ typedef struct {
     struct IDWriteFontFileStream *stream;
 } FontPrivate;
 
-typedef struct {
-    struct IDWriteFactory *factory;
-} ProviderPrivate;
+interface LocalFontEnumerator : IDWriteFontFileEnumerator
+{
+  HRESULT __stdcall QueryInterface(const IID& riid, void** ppvObject) override
+  {
+    if (IsEqualGUID(riid, __uuidof(IDWriteFontFileEnumerator))
+        || IsEqualGUID(riid, __uuidof(IUnknown))) {
+        *ppvObject = this;
+    } else {
+        *ppvObject = nullptr;
+        return E_NOINTERFACE;
+    }
 
+    AddRef();
+    return S_OK;
+  }
+  ULONG __stdcall AddRef() override
+  {
+    return InterlockedIncrement(&ref_count);
+  }
+  ULONG __stdcall Release() override
+  {
+    auto count = InterlockedDecrement(&ref_count);
+    if (count == 0)
+      delete this;
+
+    return count;
+  }
+
+  HRESULT __stdcall MoveNext(BOOL* hasCurrentFile) override
+  {
+    if (hFind == INVALID_HANDLE_VALUE)
+    {
+      hFind = FindFirstFileW(dirPath, &ffd);
+      if (hFind == INVALID_HANDLE_VALUE)
+      {
+        *hasCurrentFile = FALSE;
+        return E_INVALIDARG;
+      }
+
+      while (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+      {
+        auto result = FindNextFileW(hFind, &ffd);
+        if (result == 0)
+        {
+          FindClose(hFind);
+          hFind = INVALID_HANDLE_VALUE;
+          *hasCurrentFile = FALSE;
+          return S_OK;
+        }
+      }
+
+      FileNameToPath(ffd.cFileName);
+      *hasCurrentFile = TRUE;
+      return S_OK;
+    }
+
+    auto result = FindNextFileW(hFind, &ffd);
+    if (result == 0)
+    {
+      FindClose(hFind);
+      hFind = INVALID_HANDLE_VALUE;
+      *hasCurrentFile = FALSE;
+      return S_OK;
+    }
+
+    if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+      FileNameToPath(ffd.cFileName);
+    
+    *hasCurrentFile = TRUE;
+    return S_OK;
+  }
+
+  HRESULT __stdcall GetCurrentFontFile(IDWriteFontFile** fontFile) override
+  {
+    return factory->CreateFontFileReference(filePath, &ffd.ftLastWriteTime, fontFile);
+  }
+
+  LocalFontEnumerator(IDWriteFactory* f, char* dir)
+    : ref_count(0)
+    , dirPathLength(0)
+    , dirPath(nullptr)
+    , filePath(nullptr)
+    , hFind(INVALID_HANDLE_VALUE)
+    , factory(f)
+  {
+    AddRef();
+    factory->AddRef();
+    int len = strlen(dir);
+    dirPathLength = len + 2; //add an extra for null and another for a * at the end
+    if (len > 32000) //simple sanity checking, around max path length
+      return;
+    if (!(dir[0] == '\\' && dir[1] == '\\' && dir[2] == '?' && dir[3] == '\\'))
+      dirPathLength += 4;
+
+    char * newDir = static_cast<char*>(malloc(dirPathLength));
+    strcpy_s(newDir, dirPathLength, "\\\\?\\");
+    strcat_s(newDir, dirPathLength, dir);
+    strcat_s(newDir, dirPathLength, "*");
+
+    dirPath = to_utf16(newDir, dirPathLength);
+    free(newDir);
+    filePath = static_cast<wchar_t*>(malloc(32000 * sizeof(wchar_t)));
+
+  }
+
+  virtual ~LocalFontEnumerator()
+  {
+    factory->Release();
+    if (dirPath)
+      free(dirPath);
+    if (filePath)
+      free(filePath);
+    if (hFind != INVALID_HANDLE_VALUE)
+      FindClose(hFind);
+  }
+private:
+  void FileNameToPath(wchar_t* filename)
+  {
+    if (dirPath[dirPathLength - 2] == '*')
+      dirPath[dirPathLength - 2] = '\0';
+
+      memset(filePath, 0, 32000*sizeof(wchar_t));
+      wcscpy_s(filePath, 32000, dirPath);
+      wcscat_s(filePath, 32000, L"\\");
+      wcscat_s(filePath, 32000, filename);
+  }
+  DWORD ref_count;
+  size_t dirPathLength;
+  wchar_t* dirPath;
+  wchar_t* filePath;
+  WIN32_FIND_DATAW ffd;
+  HANDLE hFind;
+  IDWriteFactory* factory;
+};
+
+
+interface  LocalFontLoader : IDWriteFontCollectionLoader
+{
+  HRESULT __stdcall QueryInterface(const IID& riid, void** ppvObject) override
+  {
+    if (IsEqualGUID(riid, __uuidof(IDWriteFontCollectionLoader))
+        || IsEqualGUID(riid, __uuidof(IUnknown))) {
+        *ppvObject = this;
+    } else {
+        *ppvObject = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    AddRef();
+    return S_OK;
+  }
+  ULONG __stdcall AddRef() override
+  {
+    return InterlockedIncrement(&ref_count);
+  }
+  ULONG __stdcall Release() override
+  {
+    auto count = InterlockedDecrement(&ref_count);
+    if (count == 0)
+      delete this;
+
+    return count;
+  }
+  LocalFontLoader()
+    : ref_count(0)
+  {
+    AddRef();
+  }
+
+  virtual ~LocalFontLoader() = default;
+
+  HRESULT __stdcall CreateEnumeratorFromKey(IDWriteFactory* factory, void const* collectionKey, UINT32 collectionKeySize, IDWriteFontFileEnumerator** fontFileEnumerator) override;
+private:
+  DWORD ref_count;
+};
 /**
  * Custom text renderer class for logging the fonts used. It does not
  * actually render anything or do anything apart from that.
  */
 
-interface DWRITE_DECLARE_INTERFACE("92BA64F5-A48F-4816-B373-ACDB002CCD01") FallbackLogTextRenderer : IDWriteTextRenderer 
+interface FallbackLogTextRenderer : IDWriteTextRenderer 
 {
   HRESULT __stdcall QueryInterface(const IID& riid, void** ppvObject) override;
   ULONG __stdcall AddRef() override;
@@ -70,13 +243,21 @@ interface DWRITE_DECLARE_INTERFACE("92BA64F5-A48F-4816-B373-ACDB002CCD01") Fallb
   HRESULT __stdcall DrawStrikethrough(void* clientDrawingContext, FLOAT baselineOriginX, FLOAT baselineOriginY, DWRITE_STRIKETHROUGH const* strikethrough, IUnknown* clientDrawingEffect) override;
   HRESULT __stdcall DrawInlineObject(void* clientDrawingContext, FLOAT originX, FLOAT originY, IDWriteInlineObject* inlineObject, BOOL isSideways, BOOL isRightToLeft, IUnknown* clientDrawingEffect) override;
   IDWriteFactory* dw_factory;
+  virtual ~FallbackLogTextRenderer() = default;
+
 private:
   static DWORD ref_count;
 };
 
 DWORD FallbackLogTextRenderer::ref_count = 0;
 
-// IUnknown methods
+typedef struct {
+    struct IDWriteFactory *factory;
+    struct LocalFontLoader *loader;
+    struct LocalFontEnumerator *enumerator;
+    char* dirPath;
+} ProviderPrivate;
+
 HRESULT FallbackLogTextRenderer::QueryInterface(const IID& riid, void** ppvObject)
 {
     if (IsEqualGUID(riid, __uuidof(IDWriteTextRenderer))
@@ -85,7 +266,7 @@ HRESULT FallbackLogTextRenderer::QueryInterface(const IID& riid, void** ppvObjec
         *ppvObject = this;
     } else {
         *ppvObject = nullptr;
-        return E_FAIL;
+        return E_NOINTERFACE;
     }
 
     AddRef();
@@ -164,6 +345,13 @@ static void init_FallbackLogTextRenderer(FallbackLogTextRenderer *r,
   r->AddRef();
 }
 
+HRESULT LocalFontLoader::CreateEnumeratorFromKey(IDWriteFactory* factory, void const* collectionKey, UINT32 collectionKeySize, IDWriteFontFileEnumerator** fontFileEnumerator)
+{
+  auto priv = static_cast<ProviderPrivate*>(const_cast<void*>(collectionKey));
+  priv->enumerator = new LocalFontEnumerator(factory, priv->dirPath);
+  *fontFileEnumerator = priv->enumerator;
+  return S_OK;
+}
 /*
  * This function is called whenever a font is accessed for the
  * first time. It will create a FontFace for metadata access and
@@ -590,14 +778,11 @@ cleanup:
  * for later memory reading
  */
 static void scan_fonts(struct IDWriteFactory *factory,
+                       struct IDWriteFontCollection* fontCollection,
                        ASS_FontProvider *provider)
 {
-    struct IDWriteFontCollection *fontCollection = nullptr;
     struct IDWriteFont *font = nullptr;
-    auto hr = factory->GetSystemFontCollection(&fontCollection, FALSE);
-
-    if (FAILED(hr) || !fontCollection)
-        return;
+    HRESULT hr;
 
     UINT32 familyCount = fontCollection->GetFontFamilyCount();
 
@@ -658,6 +843,8 @@ static ASS_FontProviderFuncs directwrite_callbacks = {
  * provider is IDWriteFactory
  * On failure returns NULL
  */
+extern "C"
+{
 ASS_FontProvider *ass_directwrite_add_provider(ASS_Library *lib,
                                                ASS_FontSelector *selector,
                                                const char *config)
@@ -679,19 +866,42 @@ ASS_FontProvider *ass_directwrite_add_provider(ASS_Library *lib,
     if (!priv)
         goto cleanup;
 
+    priv->dirPath = lib->fonts_dir;
     priv->factory = dwFactory;
+    priv->loader = new LocalFontLoader();
+    hr = dwFactory->RegisterFontCollectionLoader(priv->loader);
+    if (FAILED(hr))
+      goto cleanup;
+
+    IDWriteFontCollection* collection;
+    hr = dwFactory->CreateCustomFontCollection(priv->loader, static_cast<void*>(priv), sizeof(ProviderPrivate), &collection);
+    if (FAILED(hr))
+      goto cleanup;
+
     provider = ass_font_provider_new(selector, &directwrite_callbacks, priv);
     if (!provider)
         goto cleanup;
 
-    scan_fonts(dwFactory, provider);
+    IDWriteFontCollection* systemCollection;
+    hr = dwFactory->GetSystemFontCollection(&systemCollection, FALSE);
+    if (FAILED(hr))
+      goto cleanup;
+
+    scan_fonts(dwFactory, systemCollection, provider);
+    scan_fonts(dwFactory, collection, provider);
+
     return provider;
 
 cleanup:
+    if (priv->enumerator)
+      priv->enumerator->Release();
+    if (priv->loader)
+      priv->loader->Release();
 
     free(priv);
     if (dwFactory)
         dwFactory->Release();
 
     return nullptr;
+}
 }

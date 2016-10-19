@@ -44,12 +44,13 @@ add_library(libass
   )
 
 if(iconv_VERSION)
-  target_link_libraries(libass iconv::iconv)
+  target_link_libraries(libass PRIVATE iconv::iconv)
   # target_include_directories(libass IMPORTED libass::libass)
   target_compile_definitions(libass PRIVATE CONFIG_ICONV)
 endif()
 
 target_link_libraries(libass
+  PRIVATE
   freetype::freetype
   fribidi::fribidi
 )
@@ -71,6 +72,10 @@ if(MSVC)
     libass/ass_directwrite.h
     libass/ass_directwrite.cpp
   )
+  target_compile_definitions(libass PRIVATE
+    CONFIG_DIRECTWRITE
+  )
+  target_link_libraries(libass PRIVATE dwrite.lib)
 set(CMAKE_DEBUG_POSTFIX "d")
 endif()
 

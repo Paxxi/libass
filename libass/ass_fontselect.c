@@ -193,47 +193,6 @@ static void load_fonts_from_dir(ASS_Library *library, const char *dir)
     closedir(d);
 }
 #else
-static wchar_t* to_utf16(const char* str, size_t length)
-{
-  if (length == 0)
-    length = strlen(str);
-  int result = MultiByteToWideChar(CP_UTF8, 0, str, length, NULL, 0);
-  if (result == 0)
-  {
-    return NULL;
-  }
-
-  wchar_t* dirPath = malloc(result * 2);
-  result = MultiByteToWideChar(CP_UTF8, 0, str, length, dirPath, result);
-
-  if (result == 0)
-  {
-    free(dirPath);
-    return NULL;
-  }
-
-  return dirPath;
-}
-
-static char* to_utf8(const wchar_t* str, size_t length)
-{
-  if (length == 0)
-    length = wcslen(str);
-
-  int result = WideCharToMultiByte(CP_UTF8, 0, str, length, NULL, 0, NULL, NULL);
-  if (result == 0)
-    return NULL;
-
-  char *newStr = malloc(result);
-  result = WideCharToMultiByte(CP_UTF8, 0, str, length, newStr, result, NULL, NULL);
-  if (result == 0)
-  {
-    free(newStr);
-    return NULL;
-  }
-  
-  return newStr;
-}
 
 static void load_fonts_from_dir(ASS_Library *library, const char *dir)
 {

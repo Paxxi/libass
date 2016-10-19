@@ -31,6 +31,9 @@
 #include "ass.h"
 #include "ass_utils.h"
 #include "ass_string.h"
+#if defined(WIN32) || defined(_MSC_VER)
+#include <windows.h>
+#endif
 
 #if (defined(__i386__) || defined(__x86_64__)) && CONFIG_ASM
 
@@ -508,3 +511,46 @@ ASS_Style *lookup_style_strict(ASS_Track *track, char *name, size_t len)
     return NULL;
 }
 
+#if defined(WIN32) || defined(_MSC_VER)
+wchar_t* to_utf16(const char* str, size_t length)
+{
+  if (length == 0)
+    length = strlen(str);
+  int result = MultiByteToWideChar(CP_UTF8, 0, str, length, NULL, 0);
+  if (result == 0)
+  {
+    return NULL;
+  }
+
+  wchar_t* dirPath = malloc(result * 2);
+  result = MultiByteToWideChar(CP_UTF8, 0, str, length, dirPath, result);
+
+  if (result == 0)
+  {
+    free(dirPath);
+    return NULL;
+  }
+
+  return dirPath;
+}
+
+char* to_utf8(const wchar_t* str, size_t length)
+{
+  if (length == 0)
+    length = wcslen(str);
+
+  int result = WideCharToMultiByte(CP_UTF8, 0, str, length, NULL, 0, NULL, NULL);
+  if (result == 0)
+    return NULL;
+
+  char *newStr = malloc(result);
+  result = WideCharToMultiByte(CP_UTF8, 0, str, length, newStr, result, NULL, NULL);
+  if (result == 0)
+  {
+    free(newStr);
+    return NULL;
+  }
+  
+  return newStr;
+}
+#endif
