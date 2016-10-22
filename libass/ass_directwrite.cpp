@@ -124,7 +124,8 @@ interface LocalFontEnumerator : IDWriteFontFileEnumerator
 
   HRESULT __stdcall GetCurrentFontFile(IDWriteFontFile** fontFile) override
   {
-    return factory->CreateFontFileReference(filePath, &ffd.ftLastWriteTime, fontFile);
+    auto hr = factory->CreateFontFileReference(filePath, &ffd.ftLastWriteTime, fontFile);
+    return hr;
   }
 
   LocalFontEnumerator(IDWriteFactory* f, char* dir)
@@ -141,12 +142,12 @@ interface LocalFontEnumerator : IDWriteFontFileEnumerator
     dirPathLength = len + 2; //add an extra for null and another for a * at the end
     if (len > 32000) //simple sanity checking, around max path length
       return;
-    if (!(dir[0] == '\\' && dir[1] == '\\' && dir[2] == '?' && dir[3] == '\\'))
-      dirPathLength += 4;
+    //if (!(dir[0] == '\\' && dir[1] == '\\' && dir[2] == '?' && dir[3] == '\\'))
+    //  dirPathLength += 4;
 
     char * newDir = static_cast<char*>(malloc(dirPathLength));
-    strcpy_s(newDir, dirPathLength, "\\\\?\\");
-    strcat_s(newDir, dirPathLength, dir);
+    //strcpy_s(newDir, dirPathLength, "\\\\?\\");
+    strcpy_s(newDir, dirPathLength, dir);
     strcat_s(newDir, dirPathLength, "*");
 
     dirPath = to_utf16(newDir, dirPathLength);
@@ -173,7 +174,7 @@ private:
 
       memset(filePath, 0, 32000*sizeof(wchar_t));
       wcscpy_s(filePath, 32000, dirPath);
-      wcscat_s(filePath, 32000, L"\\");
+      //wcscat_s(filePath, 32000, L"\\");
       wcscat_s(filePath, 32000, filename);
   }
   DWORD ref_count;
@@ -636,6 +637,50 @@ static int map_width(enum DWRITE_FONT_STRETCH stretch)
     }
 }
 
+static char* get_font_path(IDWriteFont* font)
+{
+  IDWriteFontFace* fontFace;
+  auto hr = font->CreateFontFace(&fontFace);
+  if (FAILED(hr))
+    return nullptr;
+
+  IDWriteFontFile *fontFiles[1];
+  UINT32 files = 1;
+  hr = fontFace->GetFiles(&files, fontFiles);
+  if (FAILED(hr))
+  {
+    fontFace->Release();
+    return nullptr;
+  }
+
+  const wchar_t * refKey = nullptr;
+  hr = fontFiles[0]->GetReferenceKey(reinterpret_cast<void const **>(&refKey), &files);
+  if (FAILED(hr))
+  {
+    fontFace->Release();
+    for (auto f : fontFiles)
+      f->Release();
+    return nullptr;
+  }
+
+  // This must be before we release the reference because the key is
+  // only guaranteed to be valid until release
+  char * path = nullptr;
+  auto start = wcschr(refKey, L':');
+  if (start)
+  {
+    auto diff = start - refKey - 1;
+    auto length = files / 2 - diff;
+    path = to_utf8(start - 1, length);
+  }
+
+  fontFace->Release();
+  for (auto f : fontFiles)
+    f->Release();
+
+  return path;
+}
+
 static void add_font(struct IDWriteFont *font, struct IDWriteFontFamily *fontFamily,
                      ASS_FontProvider *provider)
 {
@@ -734,16 +779,16 @@ static void add_font(struct IDWriteFont *font, struct IDWriteFontFamily *fontFam
         }
 
         temp_name[NAME_MAX_LENGTH-1] = 0;
-        size_needed = WideCharToMultiByte(CP_UTF8, 0, temp_name, -1, nullptr, 0, nullptr, nullptr);
-      auto mbName = static_cast<char *>(malloc(size_needed));
+        auto mbName = to_utf8(temp_name, 0);
         if (!mbName) {
           familyNames->Release();
-            goto cleanup;
+          goto cleanup;
         }
-        WideCharToMultiByte(CP_UTF8, 0, temp_name, -1, mbName, size_needed, nullptr, nullptr);
         meta.families[k] = mbName;
     }
     familyNames->Release();
+
+    auto path = get_font_path(font);
 
     FontPrivate *font_priv = static_cast<FontPrivate *>(calloc(1, sizeof(*font_priv)));
     if (!font_priv)
@@ -751,7 +796,7 @@ static void add_font(struct IDWriteFont *font, struct IDWriteFontFamily *fontFam
     font_priv->font = font;
     font = nullptr;
 
-    ass_font_provider_add_font(provider, &meta, nullptr, 0, font_priv);
+    ass_font_provider_add_font(provider, &meta, path, 0, font_priv);
 
 cleanup:
     if (meta.families) {
