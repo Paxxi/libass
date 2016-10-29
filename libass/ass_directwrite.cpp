@@ -136,7 +136,7 @@ interface LocalFontEnumerator : IDWriteFontFileEnumerator
     , hFind(INVALID_HANDLE_VALUE)
     , factory(f)
   {
-    AddRef();
+    LocalFontEnumerator::AddRef();
     factory->AddRef();
     int len = strlen(dir);
     dirPathLength = len + 2; //add an extra for null and another for a * at the end
@@ -167,7 +167,7 @@ interface LocalFontEnumerator : IDWriteFontFileEnumerator
       FindClose(hFind);
   }
 private:
-  void FileNameToPath(wchar_t* filename)
+  void FileNameToPath(wchar_t* filename) const
   {
     if (dirPath[dirPathLength - 2] == '*')
       dirPath[dirPathLength - 2] = '\0';
@@ -217,7 +217,7 @@ interface  LocalFontLoader : IDWriteFontCollectionLoader
   LocalFontLoader()
     : ref_count(0)
   {
-    AddRef();
+    LocalFontLoader::AddRef();
   }
 
   virtual ~LocalFontLoader() = default;
@@ -338,12 +338,12 @@ HRESULT FallbackLogTextRenderer::DrawInlineObject(void* clientDrawingContext, FL
   return S_OK;
 }
 
-static void init_FallbackLogTextRenderer(FallbackLogTextRenderer *r,
+static void init_FallbackLogTextRenderer(FallbackLogTextRenderer **r,
                                          struct IDWriteFactory *factory)
 {
-  r = new FallbackLogTextRenderer();
-  r->dw_factory = factory;
-  r->AddRef();
+  *r = new FallbackLogTextRenderer();
+  (*r)->dw_factory = factory;
+  (*r)->AddRef();
 }
 
 HRESULT LocalFontLoader::CreateEnumeratorFromKey(IDWriteFactory* factory, void const* collectionKey, UINT32 collectionKeySize, IDWriteFontFileEnumerator** fontFileEnumerator)
@@ -544,7 +544,7 @@ static char *get_fallback(void *priv, const char *base, uint32_t codepoint)
   auto dw_factory = provider_priv->factory;
     struct IDWriteTextFormat *text_format = nullptr;
     struct IDWriteTextLayout *text_layout = nullptr;
-    FallbackLogTextRenderer renderer;
+    FallbackLogTextRenderer* renderer;
 
     init_FallbackLogTextRenderer(&renderer, dw_factory);
 
@@ -571,10 +571,11 @@ static char *get_fallback(void *priv, const char *base, uint32_t codepoint)
     // Draw the layout with a dummy renderer, which logs the
     // font used and stores it.
     struct IDWriteFont *font = nullptr;
-    hr = text_layout->Draw(&font, &renderer, 0.0f, 0.0f);
+    hr = text_layout->Draw(&font, renderer, 0.0f, 0.0f);
     // We're done with these now
     text_layout->Release();
     text_format->Release();
+    renderer->Release();
     if (FAILED(hr) || font == nullptr) {
         return nullptr;
     }
@@ -687,13 +688,12 @@ static void add_font(struct IDWriteFont *font, struct IDWriteFontFamily *fontFam
     HRESULT hr;
     BOOL exists;
     wchar_t temp_name[NAME_MAX_LENGTH];
-    int size_needed;
     ASS_FontProviderMetaData meta = {nullptr};
 
     meta.weight = font->GetWeight();
     meta.width = map_width(font->GetStretch());
 
-    enum DWRITE_FONT_STYLE style = font->GetStyle();
+    auto style = font->GetStyle();
     meta.slant = (style == DWRITE_FONT_STYLE_NORMAL) ? FONT_SLANT_NONE :
                  (style == DWRITE_FONT_STYLE_OBLIQUE)? FONT_SLANT_OBLIQUE :
                  (style == DWRITE_FONT_STYLE_ITALIC) ? FONT_SLANT_ITALIC : FONT_SLANT_NONE;
@@ -712,13 +712,11 @@ static void add_font(struct IDWriteFont *font, struct IDWriteFontFamily *fontFam
         }
 
         temp_name[NAME_MAX_LENGTH-1] = 0;
-        size_needed = WideCharToMultiByte(CP_UTF8, 0, temp_name, -1, nullptr, 0, nullptr, nullptr);
-      auto mbName = static_cast<char *>(malloc(size_needed));
+        auto mbName = to_utf8(temp_name, 0);
         if (!mbName) {
           psNames->Release();
             goto cleanup;
         }
-        WideCharToMultiByte(CP_UTF8, 0, temp_name, -1, mbName, size_needed, nullptr, nullptr);
         meta.postscript_name = mbName;
 
         psNames->Release();
@@ -745,13 +743,11 @@ static void add_font(struct IDWriteFont *font, struct IDWriteFontFamily *fontFam
             }
 
             temp_name[NAME_MAX_LENGTH-1] = 0;
-            size_needed = WideCharToMultiByte(CP_UTF8, 0, temp_name, -1, nullptr, 0, nullptr, nullptr);
-            char *mbName = static_cast<char *>(malloc(size_needed));
+            char *mbName = to_utf8(temp_name, 0);
             if (!mbName) {
-              fontNames->Release();
+                fontNames->Release();
                 goto cleanup;
             }
-            WideCharToMultiByte(CP_UTF8, 0, temp_name, -1, mbName, size_needed, nullptr, nullptr);
             meta.fullnames[k] = mbName;
         }
         fontNames->Release();
