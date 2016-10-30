@@ -575,13 +575,15 @@ static char* get_fallback(void* priv, const char* base, uint32_t codepoint)
 
     init_FallbackLogTextRenderer(&renderer, dw_factory);
 
-    hr = dw_factory->CreateTextFormat(FALLBACK_DEFAULT_FONT, nullptr,
-                                                           DWRITE_FONT_WEIGHT_MEDIUM, DWRITE_FONT_STYLE_NORMAL,
-                                                           DWRITE_FONT_STRETCH_NORMAL, 1.0f, L"", &text_format);
+    auto requested_font = to_utf16(base, 0);
+
+    hr = dw_factory->CreateTextFormat(requested_font ? requested_font : FALLBACK_DEFAULT_FONT,
+                                   nullptr,
+                                   DWRITE_FONT_WEIGHT_MEDIUM, DWRITE_FONT_STYLE_NORMAL,
+                                   DWRITE_FONT_STRETCH_NORMAL, 1.0f, L"", &text_format);
+    free(requested_font);
     if (FAILED(hr))
-    {
         return nullptr;
-    }
 
     // Encode codepoint as UTF-16
     wchar_t char_string[2];
@@ -646,9 +648,7 @@ static char* get_fallback(void* priv, const char* base, uint32_t codepoint)
         }
     }
 
-    auto size_needed = WideCharToMultiByte(CP_UTF8, 0, temp_name, -1, nullptr, 0, nullptr, nullptr);
-    auto family = static_cast<char *>(malloc(size_needed));
-    WideCharToMultiByte(CP_UTF8, 0, temp_name, -1, family, size_needed, nullptr, nullptr);
+    auto family = to_utf8(temp_name, 0);
 
     familyNames->Release();
     font->Release();
