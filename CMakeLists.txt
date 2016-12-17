@@ -2,9 +2,11 @@ cmake_minimum_required(VERSION 3.2)
 
 project(libass LANGUAGES C CXX)
 
-find_package(iconv)
-find_package(freetype 2.6 REQUIRED NO_MODULE)
-find_package(fribidi REQUIRED NO_MODULE)
+if (!UNIFIED_BUILD)
+  find_package(iconv)
+  find_package(freetype 2.6 REQUIRED NO_MODULE)
+  find_package(fribidi REQUIRED NO_MODULE)
+endif()
 
 add_library(libass
   libass/ass_bitmap.c
@@ -43,20 +45,17 @@ add_library(libass
   libass/ass.h
   )
 
-if(iconv_VERSION)
-  target_link_libraries(libass PRIVATE iconv::iconv)
-  # target_include_directories(libass IMPORTED libass::libass)
-  target_compile_definitions(libass PRIVATE CONFIG_ICONV)
-endif()
-
 target_link_libraries(libass
   PRIVATE
   freetype::freetype
   fribidi::fribidi
+  iconv::iconv
 )
 target_compile_definitions(libass PRIVATE
   CONFIG_RASTERIZER
-  BUILDING_LIBASS)
+  BUILDING_LIBASS
+  CONFIG_ICONV
+)
 
 if(NOT BUILD_SHARED_LIBS)
   target_compile_definitions(libass PRIVATE ASS_STATIC)
