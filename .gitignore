@@ -37,3 +37,4 @@ Makefile.in
 /missing
 /m4
 build/
+.vscode/

@@ -516,20 +516,23 @@ wchar_t* to_utf16(const char* str, size_t length)
 {
   if (length == 0)
     length = strlen(str);
+
   int result = MultiByteToWideChar(CP_UTF8, 0, str, length, NULL, 0);
   if (result == 0)
-  {
     return NULL;
-  }
 
-  wchar_t* dirPath = malloc(result * 2);
-  result = MultiByteToWideChar(CP_UTF8, 0, str, length, dirPath, result);
+  length = result + 1;
+  wchar_t* dirPath = malloc(length * 2);
+  result = MultiByteToWideChar(CP_UTF8, 0, str, result, dirPath, length);
 
   if (result == 0)
   {
     free(dirPath);
     return NULL;
   }
+
+  if (dirPath[length - 1] != '\0')
+    dirPath[length - 1] = '\0';
 
   return dirPath;
 }
@@ -543,13 +546,17 @@ char* to_utf8(const wchar_t* str, size_t length)
   if (result == 0)
     return NULL;
 
-  char *newStr = malloc(result);
-  result = WideCharToMultiByte(CP_UTF8, 0, str, length, newStr, result, NULL, NULL);
+  length = result + 1;
+  char *newStr = malloc(length);
+  result = WideCharToMultiByte(CP_UTF8, 0, str, result, newStr, length, NULL, NULL);
   if (result == 0)
   {
     free(newStr);
     return NULL;
   }
+
+  if (newStr[length - 1] != '\0')
+    newStr[length - 1] = '\0';
   
   return newStr;
 }

@@ -2,11 +2,9 @@ cmake_minimum_required(VERSION 3.2)
 
 project(libass LANGUAGES C CXX)
 
-if (!UNIFIED_BUILD)
   find_package(iconv)
   find_package(freetype 2.6 REQUIRED NO_MODULE)
   find_package(fribidi REQUIRED NO_MODULE)
-endif()
 
 add_library(libass
   libass/ass_bitmap.c
