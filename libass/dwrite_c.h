@@ -31,6 +31,7 @@ typedef struct IDWriteTextLayout IDWriteTextLayout;
 typedef struct IDWriteTextRenderer IDWriteTextRenderer;
 typedef struct IDWriteFontFileEnumerator IDWriteFontFileEnumerator;
 typedef struct IDWriteFontCollectionLoader IDWriteFontCollectionLoader;
+typedef struct IDWriteGdiInterop IDWriteGdiInterop;
 
 #include <dcommon.h>
 
@@ -259,7 +260,8 @@ DECLARE_INTERFACE_(IDWriteFactory,IUnknown)
         IDWriteTextFormat **textFormat) PURE;
 
     STDMETHOD(dummy12)(THIS);
-    STDMETHOD(dummy13)(THIS);
+    STDMETHOD(GetGdiInterop)(THIS_
+        IDWriteGdiInterop **gdiInterop) PURE;
 
     STDMETHOD(CreateTextLayout)(THIS_
         WCHAR const *string,
@@ -283,6 +285,7 @@ DECLARE_INTERFACE_(IDWriteFactory,IUnknown)
 #define IDWriteFactory_CreateTextFormat(This,fontFamilyName,fontCollection,fontWeight,fontStyle,fontStretch,fontSize,localeName,textFormat) (This)->lpVtbl->CreateTextFormat(This,fontFamilyName,fontCollection,fontWeight,fontStyle,fontStretch,fontSize,localeName,textFormat)
 #define IDWriteFactory_CreateTextLayout(This,string,stringLength,textFormat,maxWidth,maxHeight,textLayout) (This)->lpVtbl->CreateTextLayout(This,string,stringLength,textFormat,maxWidth,maxHeight,textLayout)
 #define IDWriteFactory_CreateFontFileReference(This,filePath,lastWriteTime,fontFile) (This)->lpVtbl->CreateFontFileReference(filePath,lastWriteTime,fontFile)
+#define IDWriteFactory_GetGdiInterop(This,gdiInterop) (This)->lpVtbl->GetGdiInterop(This,gdiInterop)
 #endif /*COBJMACROS*/
 
 #undef  INTERFACE
@@ -776,11 +779,37 @@ EXTERN_C HRESULT __declspec(dllimport) __stdcall DWriteCreateFactory(
     _COM_Outptr_ IUnknown** factory
 );
 
+#undef  INTERFACE
+#define INTERFACE IDWriteGdiInterop
+DECLARE_INTERFACE_(IDWriteGdiInterop,IUnknown)
+{
+    BEGIN_INTERFACE
+
+#ifndef __cplusplus
+    /* IUnknown methods */
+    STDMETHOD(QueryInterface)(THIS_ REFIID riid, void **ppvObject) PURE;
+    STDMETHOD_(ULONG, AddRef)(THIS) PURE;
+    STDMETHOD_(ULONG, Release)(THIS) PURE;
+#endif
+
+    STDMETHOD(CreateFontFromLOGFONT)(THIS_
+                                     LOGFONTW const *logFont,
+                                     IDWriteFont **font) PURE;
+    /* rest dropped */
+    END_INTERFACE
+};
+#ifdef COBJMACROS
+#define IDWriteGdiInterop_QueryInterface(This,riid,ppvObject) (This)->lpVtbl->QueryInterface(This,riid,ppvObject)
+#define IDWriteGdiInterop_AddRef(This) (This)->lpVtbl->AddRef(This)
+#define IDWriteGdiInterop_Release(This) (This)->lpVtbl->Release(This)
+#define IDWriteGdiInterop_CreateFontFromLOGFONT(This,logFont,font) (This)->lpVtbl->CreateFontFromLOGFONT(This,logFont,font)
+#endif /*COBJMACROS*/
 
 DEFINE_GUID(IID_IDWriteFactory, 0xb859ee5a,0xd838,0x4b5b,0xa2,0xe8,0x1a,0xdc,0x7d,0x93,0xdb,0x48);
 DEFINE_GUID(IID_IDWritePixelSnapping, 0xeaf3a2da,0xecf4,0x4d24,0xb6,0x44,0xb3,0x4f,0x68,0x42,0x02,0x4b);
 DEFINE_GUID(IID_IDWriteTextRenderer, 0xef8a8135,0x5cc6,0x45fe,0x88,0x25,0xc5,0xa0,0x72,0x4e,0xb8,0x19);
 DEFINE_GUID(IID_IDWriteFontFileEnumerator, 0x72755049, 0x5ff7, 0x435d, 0x83, 0x48, 0x4b, 0xe9, 0x7c, 0xfa, 0x6c, 0x7c);
 DEFINE_GUID(IID_IDWriteFontCollectionLoader, 0xcca920e4, 0x52f0, 0x492b, 0xbf, 0xa8, 0x29, 0xc7, 0x2e, 0xe0, 0xa4, 0x68);
+DEFINE_GUID(IID_IDWriteGdiInterop, 0x1edd9491,0x9853,0x4299,0x89,0x8f,0x64,0x32,0x98,0x3b,0x6f,0x3a);
 
 #endif /* __INC_DWRITE__ */

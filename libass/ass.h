@@ -24,7 +24,7 @@
 #include <stdarg.h>
 #include "ass_types.h"
 
-#define LIBASS_VERSION 0x01500000
+#define LIBASS_VERSION 0x01501000
 
 #ifdef __cplusplus
 extern "C" {
@@ -711,6 +711,8 @@ ASS_EXTERN void ass_add_font(ASS_Library *library, char *name, char *data,
 
 /**
  * \brief Remove all fonts stored in an ass_library object.
+ * This can only be called safely if all ASS_Track and ASS_Renderer instances
+ * associated with the library handle have been released first.
  * \param library library handle
  */
 ASS_EXTERN void ass_clear_fonts(ASS_Library *library);

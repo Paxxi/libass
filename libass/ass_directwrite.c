@@ -89,6 +89,7 @@ typedef struct {
     IDWriteFactory *factory;
     LocalFontLoader* loader;
     LocalFontEnumerator* enumerator;
+    IDWriteGdiInterop *gdi_interop;
     char* dirPath;
 } ProviderPrivate;
 
@@ -678,6 +679,7 @@ static bool check_glyph(void *data, uint32_t code)
 static void destroy_provider(void *priv)
 {
     ProviderPrivate *provider_priv = (ProviderPrivate *)priv;
+    provider_priv->gdi_interop->lpVtbl->Release(provider_priv->gdi_interop);
     provider_priv->factory->lpVtbl->Release(provider_priv->factory);
     FreeLibrary(provider_priv->directwrite_lib);
     free(provider_priv);
@@ -713,7 +715,8 @@ static int encode_utf16(wchar_t *chars, uint32_t codepoint)
     }
 }
 
-static char *get_fallback(void *priv, const char *base, uint32_t codepoint)
+static char *get_fallback(void *priv, ASS_Library *lib,
+                          const char *base, uint32_t codepoint)
 {
     HRESULT hr;
     ProviderPrivate *provider_priv = (ProviderPrivate *)priv;
@@ -988,9 +991,7 @@ cleanup:
 }
 
 /*
- * Scan every system font on the current machine and add it
- * to the libass lookup. Stores the FontPrivate as private data
- * for later memory reading
+ * When a new font name is requested, called to load that font from Windows
  */
 static void scan_fonts(IDWriteFactory *factory,
                        IDWriteFontCollection *fontCollection,
@@ -999,35 +1000,62 @@ static void scan_fonts(IDWriteFactory *factory,
     HRESULT hr = S_OK;
     IDWriteFont *font = NULL;
 
-    UINT32 familyCount = IDWriteFontCollection_GetFontFamilyCount(fontCollection);
+    hr = IDWriteFont_GetFontFamily(font, &fontFamily);
+    if (FAILED(hr) || !fontFamily)
+        goto cleanup;
 
-    for (UINT32 i = 0; i < familyCount; ++i) {
-        IDWriteFontFamily *fontFamily = NULL;
+    add_font(font, fontFamily, provider);
 
-        hr = IDWriteFontCollection_GetFontFamily(fontCollection, i, &fontFamily);
-        if (FAILED(hr))
-            continue;
+    IDWriteFontFamily_Release(fontFamily);
 
-        UINT32 fontCount = IDWriteFontFamily_GetFontCount(fontFamily);
-        for (UINT32 j = 0; j < fontCount; ++j) {
-            hr = IDWriteFontFamily_GetFont(fontFamily, j, &font);
-            if (FAILED(hr))
-                continue;
+    return;
 
-            // Simulations for bold or oblique are sometimes synthesized by
-            // DirectWrite. We are only interested in physical fonts.
-            if (IDWriteFont_GetSimulations(font) != 0) {
-                IDWriteFont_Release(font);
-                continue;
-            }
-
-            add_font(font, fontFamily, provider);
-        }
-
+cleanup:
+    if (font)
+        IDWriteFont_Release(font);
+    if (fontFamily)
         IDWriteFontFamily_Release(fontFamily);
-    }
+}
 
-    IDWriteFontCollection_Release(fontCollection);
+static void match_fonts(void *priv, ASS_Library *lib,
+                        ASS_FontProvider *provider, char *name)
+{
+    ProviderPrivate *provider_priv = (ProviderPrivate *)priv;
+    IDWriteFont *font = NULL;
+    IDWriteFontFamily *fontFamily = NULL;
+    LOGFONTW lf;
+    HRESULT hr = S_OK;
+
+    memset(&lf, 0, sizeof(LOGFONTW));
+    lf.lfWeight = FW_DONTCARE;
+    lf.lfCharSet = DEFAULT_CHARSET;
+    lf.lfOutPrecision = OUT_TT_PRECIS;
+    lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
+    lf.lfQuality = ANTIALIASED_QUALITY;
+    lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
+
+    // lfFaceName can hold up to LF_FACESIZE wchars; truncate longer names
+    MultiByteToWideChar(CP_UTF8, 0, name, -1, lf.lfFaceName, LF_FACESIZE-1);
+
+    hr = IDWriteGdiInterop_CreateFontFromLOGFONT(provider_priv->gdi_interop, &lf, &font);
+    if (FAILED(hr) || !font)
+        return;
+
+    hr = IDWriteFont_GetFontFamily(font, &fontFamily);
+    if (FAILED(hr) || !fontFamily)
+        goto cleanup;
+
+    add_font(font, fontFamily, provider);
+
+    IDWriteFontFamily_Release(fontFamily);
+
+    return;
+
+cleanup:
+    if (font)
+        IDWriteFont_Release(font);
+    if (fontFamily)
+        IDWriteFontFamily_Release(fontFamily);
 }
 
 static void get_substitutions(void *priv, const char *name,
@@ -1047,6 +1075,7 @@ static ASS_FontProviderFuncs directwrite_callbacks = {
     .check_glyph        = check_glyph,
     .destroy_font       = destroy_font,
     .destroy_provider   = destroy_provider,
+    .match_fonts        = match_fonts,
     .get_substitutions  = get_substitutions,
     .get_fallback       = get_fallback,
     .get_font_index     = get_font_index,
@@ -1066,10 +1095,12 @@ typedef HRESULT (WINAPI *DWriteCreateFactoryFn)(
  */
 ASS_FontProvider *ass_directwrite_add_provider(ASS_Library *lib,
                                                ASS_FontSelector *selector,
-                                               const char *config)
+                                               const char *config,
+                                               FT_Library ftlib)
 {
     HRESULT hr = S_OK;
     IDWriteFactory *dwFactory = NULL;
+    IDWriteGdiInterop *dwGdiInterop = NULL;
     ASS_FontProvider *provider = NULL;
     ProviderPrivate *priv = NULL;
 
@@ -1079,6 +1110,14 @@ ASS_FontProvider *ass_directwrite_add_provider(ASS_Library *lib,
     if (FAILED(hr) || !dwFactory) {
         ass_msg(lib, MSGL_WARN, "Failed to initialize directwrite.");
         dwFactory = NULL;
+        goto cleanup;
+    }
+
+    hr = IDWriteFactory_GetGdiInterop(dwFactory,
+                                      &dwGdiInterop);
+    if (FAILED(hr) || !dwGdiInterop) {
+        ass_msg(lib, MSGL_WARN, "Failed to get IDWriteGdiInterop.");
+        dwGdiInterop = NULL;
         goto cleanup;
     }
 
@@ -1097,6 +1136,7 @@ ASS_FontProvider *ass_directwrite_add_provider(ASS_Library *lib,
     hr = IDWriteFactory_CreateCustomFontCollection(dwFactory, (IDWriteFontCollectionLoader*)priv->loader, priv, sizeof(ProviderPrivate), &collection);
     if (FAILED(hr))
         goto cleanup;
+    priv->gdi_interop = dwGdiInterop;
 
     provider = ass_font_provider_new(selector, &directwrite_callbacks, priv);
     if (!provider)
@@ -1119,6 +1159,8 @@ cleanup:
             LocalFontEnumerator_Release((IDWriteFontFileEnumerator*)priv->enumerator);
         free(priv);
     }
+    if (dwGdiInterop)
+        dwGdiInterop->lpVtbl->Release(dwGdiInterop)
     if (dwFactory)
         dwFactory->lpVtbl->Release(dwFactory);
 
