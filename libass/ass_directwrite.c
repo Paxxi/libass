@@ -999,6 +999,7 @@ static void scan_fonts(IDWriteFactory *factory,
 {
     HRESULT hr = S_OK;
     IDWriteFont *font = NULL;
+    IDWriteFontFamily *fontFamily = NULL;
 
     hr = IDWriteFont_GetFontFamily(font, &fontFamily);
     if (FAILED(hr) || !fontFamily)
@@ -1160,7 +1161,7 @@ cleanup:
         free(priv);
     }
     if (dwGdiInterop)
-        dwGdiInterop->lpVtbl->Release(dwGdiInterop)
+        dwGdiInterop->lpVtbl->Release(dwGdiInterop);
     if (dwFactory)
         dwFactory->lpVtbl->Release(dwFactory);
 

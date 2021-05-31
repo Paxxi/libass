@@ -1,11 +1,24 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(libass VERSION 0.15.0 LANGUAGES C)
+project(libass VERSION 0.15.1 LANGUAGES C)
 
-  find_package(iconv REQUIRED NO_MODULE)
-  find_package(freetype 2.6 REQUIRED NO_MODULE)
-  find_package(fribidi REQUIRED NO_MODULE)
-  find_package(harfbuzz REQUIRED NO_MODULE)
+find_package(iconv REQUIRED NO_MODULE)
+find_package(freetype 2.6 REQUIRED NO_MODULE)
+find_package(fribidi REQUIRED NO_MODULE)
+find_package(harfbuzz REQUIRED NO_MODULE)
+
+include(FindGit)
+if(GIT_EXECUTABLE AND EXISTS ${CMAKE_CURRENT_LIST_DIR}/.git)
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} describe --tags --long --always --dirty --broken --abbrev=40
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+       OUTPUT_VARIABLE OUT RESULT_VARIABLE RES)
+   IF(RES EQUAL 0)
+    string(REGEX REPLACE "\n$" "" VCS_TAG "${OUT}")
+  endif()
+else()
+  set(VCS_TAG "")
+endif()
 
 add_library(libass
   libass/ass_bitmap.c
@@ -58,6 +71,7 @@ target_compile_definitions(libass
     CONFIG_RASTERIZER
     BUILDING_LIBASS
     CONFIG_ICONV
+    CONFIG_SOURCEVERSION="${VCS_TAG}"
 )
 
 if(NOT BUILD_SHARED_LIBS)
