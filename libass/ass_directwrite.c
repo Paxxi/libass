@@ -1001,21 +1001,35 @@ static void scan_fonts(IDWriteFactory *factory,
     IDWriteFont *font = NULL;
     IDWriteFontFamily *fontFamily = NULL;
 
-    hr = IDWriteFont_GetFontFamily(font, &fontFamily);
-    if (FAILED(hr) || !fontFamily)
-        goto cleanup;
+    UINT32 familyCount = IDWriteFontCollection_GetFontFamilyCount(fontCollection);
 
-    add_font(font, fontFamily, provider);
+    for (UINT32 i = 0; i < familyCount; ++i) {
+        IDWriteFontFamily* fontFamily = NULL;
 
-    IDWriteFontFamily_Release(fontFamily);
+        hr = IDWriteFontCollection_GetFontFamily(fontCollection, i, &fontFamily);
+        if (FAILED(hr))
+            continue;
 
-    return;
+        UINT32 fontCount = IDWriteFontFamily_GetFontCount(fontFamily);
+        for (UINT32 j = 0; j < fontCount; ++j) {
+            hr = IDWriteFontFamily_GetFont(fontFamily, j, &font);
+            if (FAILED(hr))
+                continue;
 
-cleanup:
-    if (font)
-        IDWriteFont_Release(font);
-    if (fontFamily)
+            // Simulations for bold or oblique are sometimes synthesized by
+            // DirectWrite. We are only interested in physical fonts.
+            if (IDWriteFont_GetSimulations(font) != 0) {
+                IDWriteFont_Release(font);
+                continue;
+            }
+
+            add_font(font, fontFamily, provider);
+        }
+
         IDWriteFontFamily_Release(fontFamily);
+    }
+
+    IDWriteFontCollection_Release(fontCollection);
 }
 
 static void match_fonts(void *priv, ASS_Library *lib,
